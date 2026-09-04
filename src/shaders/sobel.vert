@@ -1,3 +1,6 @@
+// Plain pass-through vertex shader: the Sobel gradient and N.L lighting
+// happen per-fragment in sobel.frag, this just projects the full-screen
+// quad and hands the texture coordinate through.
 attribute vec3 aPosition;
 attribute vec2 aTexCoord;
 varying vec2 vTexCoord;

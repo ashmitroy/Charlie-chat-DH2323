@@ -1,3 +1,6 @@
+// Plain pass-through vertex shader: the raymarch happens per-fragment in
+// shadow.frag, this just projects the full-screen quad and hands the
+// texture coordinate through.
 attribute vec3 aPosition;
 attribute vec2 aTexCoord;
 varying vec2 vTexCoord;
