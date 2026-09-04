@@ -2,9 +2,9 @@
 
 Course project repo for **DH2323** (KTH) by **Ashmit Deb Roy**.
 
-- **Play (lit)**: ``
-- **Play (flat/unlit comparison)**: ``
-- **Blog and project log**: ``
+- **Play (lit)**: `https://ashmitroy.github.io/Charlie-chat-DH2323/play/index.html`
+- **Play (flat/unlit comparison)**: `https://ashmitroy.github.io/Charlie-chat-DH2323/play/index.html?mode=flat`
+- **Blog and project log**: `https://ashmitroy.github.io/Charlie-chat-DH2323/`
 - **Repo**: `https://github.com/ashmitroy/Charlie-chat-DH2323`
 
 ## Project status
