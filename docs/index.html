@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Let Me Ask Charlie: Progress Log</title>
+    <meta name="description" content="Weekly progress documentation for the DH2323 project 'Let Me Ask Charlie' by Ashmit Deb Roy." />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 32px 24px 64px;
+        background: #0b0c10;
+        font-family: 'Courier New', Courier, monospace;
+        line-height: 1.6;
+        color: #b8b8b8;
+        position: relative;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          to bottom,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.13) 2px,
+          rgba(0, 0, 0, 0.13) 4px
+        );
+        pointer-events: none;
+        z-index: 50;
+      }
+
+      .page { max-width: 860px; margin: 0 auto; }
+
+      h1 {
+        color: #d4d4d4;
+        font-size: 1.4rem;
+        font-weight: normal;
+        letter-spacing: 0.22em;
+        margin: 0 0 0.3rem;
+      }
+      .cursor { animation: blink 1.1s step-end infinite; }
+      @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+      .subtitle { color: #6a6a6a; margin: 0 0 1.5rem; font-size: 0.85rem; }
+
+      .divider { color: #2a2a2a; margin: 0 0 1.75rem; overflow: hidden; white-space: nowrap; font-size: 0.85rem; }
+
+      h2 {
+        color: #8a8a8a;
+        font-size: 0.8rem;
+        font-weight: normal;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin: 2.25rem 0 1rem;
+      }
+      h2::before { content: "> "; color: #4a4a4a; }
+
+      .play-links { margin: 0 0 0.5rem; }
+      .play-links a {
+        display: inline-block;
+        color: #cfcfcf;
+        text-decoration: none;
+        border: 1px solid #2f2f2f;
+        padding: 8px 14px;
+        margin: 0 10px 10px 0;
+        font-size: 0.85rem;
+        transition: border-color 0.15s ease, color 0.15s ease;
+      }
+      .play-links a:hover { border-color: #6a6a6a; color: #eaeaea; }
+      .play-links a::before { content: "▶ "; color: #5e5e5e; }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 10px;
+      }
+      .status-card { border: 1px solid #232323; padding: 12px 14px; }
+      .status-label { font-size: 0.7rem; color: #6a6a6a; letter-spacing: 0.05em; }
+      .status-value { color: #c4c4c4; margin-top: 4px; font-size: 0.85rem; }
+
+      .pipeline { list-style: none; margin: 0; padding: 0; }
+      .pipeline li {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 5px 0;
+        font-size: 0.82rem;
+        color: #4a4a4a;
+      }
+      .pipeline li.done   { color: #8a8a8a; }
+      .pipeline li.active { color: #cfcfcf; }
+      .step-num { font-size: 0.7rem; color: #3a3a3a; width: 20px; flex-shrink: 0; }
+      .done   .step-num { color: #556b55; }
+      .active .step-num { color: #8a7a4a; }
+      .step-dot { flex-shrink: 0; }
+      .pipeline li.done   .step-dot::before { content: "[ok] "; color: #556b55; }
+      .pipeline li.active .step-dot::before { content: "[..] "; color: #8a7a4a; }
+      .pipeline li:not(.done):not(.active) .step-dot::before { content: "[  ] "; color: #333; }
+
+      .entry-list { list-style: none; margin: 0; padding: 0; }
+      .entry-list li {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #1c1c1c;
+        font-size: 0.85rem;
+        gap: 16px;
+      }
+      .entry-list li:last-child { border-bottom: none; }
+      .entry-list a { text-decoration: none; color: #a8a8a8; }
+      .entry-list a:hover { color: #eaeaea; }
+      .entry-list a::before { content: "· "; color: #3a3a3a; }
+      .entry-date { font-size: 0.72rem; color: #4a4a4a; flex-shrink: 0; }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+
+      <h1>LET ME ASK CHARLIE<span class="cursor">_</span></h1>
+      <p class="subtitle">DH2323 project log · Ashmit Deb Roy · KTH</p>
+      <p class="divider">────────────────────────────────────────────────────────────────</p>
+
+      <h2>Play</h2>
+      <p class="play-links">
+        <a href="./play/index.html">Play the game</a>
+        <a href="./play/index.html?mode=flat">Play the flat/unlit comparison build</a>
+      </p>
+
+      <h2>Current status</h2>
+      <div class="status-grid">
+        <div class="status-card"><div class="status-label">Shaders</div><div class="status-value">sobel · shadow · post</div></div>
+        <div class="status-card"><div class="status-label">Rendering pipeline</div><div class="status-value">3-pass complete</div></div>
+        <div class="status-card"><div class="status-label">Game loop</div><div class="status-value">Complete, published</div></div>
+        <div class="status-card"><div class="status-label">Chase pacing</div><div class="status-value">3-stage: slow open, ramp, rubber-band</div></div>
+        <div class="status-card"><div class="status-label">Sprites</div><div class="status-value">Procedural, both characters</div></div>
+        <div class="status-card"><div class="status-label">Report</div><div class="status-value">Complete, results pending study data</div></div>
+        <div class="status-card"><div class="status-label">User study</div><div class="status-value">Running: in-person + remote form</div></div>
+        <div class="status-card"><div class="status-label">Blog</div><div class="status-value">15 entries</div></div>
+      </div>
+
+      <h2>Build pipeline</h2>
+      <ol class="pipeline">
+        <li class="done"><span class="step-num">01</span><span class="step-dot"></span>Spec submitted · repo and folder structure set up</li>
+        <li class="done"><span class="step-num">02</span><span class="step-dot"></span>Pipeline theory: N·L, SDF, Sobel, post-processing concepts</li>
+        <li class="done"><span class="step-num">03</span><span class="step-dot"></span>Professor feedback: p5.js confirmed Grade A · 18-day plan locked</li>
+        <li class="done"><span class="step-num">04</span><span class="step-dot"></span>UV gradient shader · mouse-driven point light · pipeline proven</li>
+        <li class="done"><span class="step-num">05</span><span class="step-dot"></span>Sobel normal derivation · normal map visible on screen</li>
+        <li class="done"><span class="step-num">06</span><span class="step-dot"></span>N·L diffuse + attenuation · environment responds to light</li>
+        <li class="done"><span class="step-num">07</span><span class="step-dot"></span>Multi-pass framebuffer · compositing architecture proven</li>
+        <li class="done"><span class="step-num">08</span><span class="step-dot"></span>SDF shadow hard cutout · Charlie Chat first visible</li>
+        <li class="done"><span class="step-num">09</span><span class="step-dot"></span>Quilez soft shadow · penumbra replaces hard edge</li>
+        <li class="done"><span class="step-num">10</span><span class="step-dot"></span>Post-processing · bloom · Reinhard · vignette · grain</li>
+        <li class="done"><span class="step-num">11</span><span class="step-dot"></span>Game loop · player movement · Charlie AI · proximity shadow</li>
+        <li class="done"><span class="step-num">12</span><span class="step-dot"></span>State machine · start screen · game over · cleanup</li>
+        <li class="done"><span class="step-num">13</span><span class="step-dot"></span>Procedural sprites for both characters · game feel polish</li>
+        <li class="done"><span class="step-num">14</span><span class="step-dot"></span>Furniture shadows · self-shadow fix · user study infrastructure</li>
+        <li class="done"><span class="step-num">15</span><span class="step-dot"></span>Report complete · blog reality-check pass · game published</li>
+        <li class="active"><span class="step-num">16</span><span class="step-dot"></span>User study running · results pending</li>
+      </ol>
+
+      <h2>Log entries</h2>
+      <ul class="entry-list">
+        <li><a href="./entries/entry-01.html">Entry 01: Starting from nothing. Spec submitted, repo set up.</a><span class="entry-date">2026-04-23</span></li>
+        <li><a href="./entries/entry-02.html">Entry 02: The formulas start making sense.</a><span class="entry-date">2026-04-23</span></li>
+        <li><a href="./entries/entry-03.html">Entry 03: Professor feedback changes everything.</a><span class="entry-date">2026-04-24</span></li>
+        <li><a href="./entries/entry-04.html">Entry 04: First shader running. GLSL pipeline proven.</a><span class="entry-date">2026-04-24</span></li>
+        <li><a href="./entries/entry-05.html">Entry 05: Sobel confirmed. Normal map visible.</a><span class="entry-date">2026-04-27</span></li>
+        <li><a href="./entries/entry-06.html">Entry 06: N·L diffuse working.</a><span class="entry-date">2026-04-28</span></li>
+        <li><a href="./entries/entry-07.html">Entry 07: Multi-pass pipeline working.</a><span class="entry-date">2026-04-28</span></li>
+        <li><a href="./entries/entry-08.html">Entry 08: SDF shadow working. Charlie Chat exists.</a><span class="entry-date">2026-04-28</span></li>
+        <li><a href="./entries/entry-09.html">Entry 09: Quilez soft shadow. The spokes are working.</a><span class="entry-date">2026-05-04</span></li>
+        <li><a href="./entries/entry-10.html">Entry 10: Post-processing. The pipeline gets a darkroom.</a><span class="entry-date">2026-05-04</span></li>
+        <li><a href="./entries/entry-11.html">Entry 11: Game loop. Player moves. Charlie hunts.</a><span class="entry-date">2026-05-06</span></li>
+        <li><a href="./entries/entry-12.html">Entry 12: Start screen. Game over. State machine.</a><span class="entry-date">2026-08-07</span></li>
+        <li><a href="./entries/entry-13.html">Entry 13: Materials fixed. Bodies for both characters. The chase gets an ending.</a><span class="entry-date">2026-08-10</span></li>
+        <li><a href="./entries/entry-14.html">Entry 14: Furniture casts shadows. Two bugs in a row.</a><span class="entry-date">2026-08-17</span></li>
+        <li><a href="./entries/entry-15.html">Entry 15: The reality check.</a><span class="entry-date">2026-08-27</span></li>
+      </ul>
+
+    </main>
+  </body>
+</html>

@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Entry 14 Furniture casts shadows. Two bugs in a row.</title>
+    <meta name="description" content="DH2323 weekly log entry 14." />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial;
+        line-height: 1.55;
+      }
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+      .nav a {
+        text-decoration: none;
+      }
+      .entry-rendered pre {
+        overflow: auto;
+        padding: 12px 14px;
+        border-radius: 10px;
+      }
+      .entry-rendered code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+      }
+      .entry-rendered img,
+      .entry-rendered video {
+        max-width: 100%;
+        border-radius: 10px;
+        display: block;
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="nav">
+        <a href="../index.html">← Back to log index</a>
+      </nav>
+
+      <textarea class="entry-md" hidden>---
+date: 2026-08-17
+session: 14
+title: "Furniture casts shadows. Two bugs in a row. The study finally has a real design."
+tags:
+  - code
+  - glsl
+  - sdf
+  - shadow
+  - debug
+  - user-study
+  - evaluation
+---
+
+# Entry 14: Furniture casts shadows. Two bugs in a row.
+
+## What happened
+
+Charlie was the only thing in the room that occluded light. The furniture just sat there, normal-mapped but otherwise inert, which is a gap the moment you think about what an examiner is actually being shown. Everything static in the scene should cast the exact same soft shadow Charlie does, using the exact same technique. That's supposed to be close to free once you have one raymarcher, since `sceneSDF()` is just a `min()` over every shape in the scene.
+
+---
+
+## Bug one: distances computed in the wrong space
+
+First pass added the armchair, side table, and both plants as SDF primitives straight into the shadow shader, in UV space, the same 0–1 coordinates everything else in the pipeline already uses:
+
+```glsl
+d = min(d, sdBox(p - vec2(0.84375, 0.240741), vec2(0.052083, 0.074074)));
+```
+
+Looked fine in the code. Looked wrong on screen: the furniture shadows came out as huge stretched diagonal wedges, nothing like the shape of the objects casting them.
+
+The canvas is 960×540, not square. A distance of 0.1 in UV-x covers 96 pixels; a distance of 0.1 in UV-y covers 54 pixels. Any SDF distance computed directly against UV coordinates gets stretched along whichever axis is shorter in real pixels, which for this canvas is every vertical distance. Charlie's shadow never showed this because his radius was defined in a way that happened not to expose it as obviously; the furniture, with actual rectangular boxes, showed it immediately.
+
+Fixed by moving the whole raymarch into pixel space instead of UV space: multiply the light and fragment positions by `uResolution` before doing any distance math, so 1 unit is 1 pixel on both axes:
+
+```glsl
+vec2 p0 = vTexCoord * uResolution;
+vec2 lightPx = uLight * uResolution;
+```
+
+Isotropic space. A box stays a box.
+
+---
+
+## Bug two: the furniture was shadowing itself
+
+Second screenshot, after the stretching was fixed: the furniture's own surface was dark, like it was casting a shadow onto itself rather than just outward onto the floor.
+
+A pixel that sits directly on the armchair's own surface is, geometrically, inside the armchair's own SDF at distance ≈0. The raymarch toward the light starts at that pixel and immediately reads `h < 0`, which the loop treats as "blocked." The object shadows its own surface by definition of how the SDF test works. Charlie never showed this bug either: his silhouette sprite draws on top of the shadow pass afterward and physically covers it. Furniture has no equivalent sprite sitting on top, so the self-shadow was fully visible.
+
+Fixed by skipping the shadow test entirely for any pixel within a few px of the furniture's own surface: only pixels clearly out on the floor get raymarched against it:
+
+```glsl
+if (furnitureSDF(p0) > 3.0) {
+  shadowFurniture = raymarch(p0, lightPx, true);
+}
+```
+
+Also gave furniture shadows a brightness floor (`max(shadowFurniture, 0.6)`) so they read as gentle occlusion rather than sharing Charlie's full-black horror treatment, same technique, different intensity, since only one of the two is supposed to feel threatening.
+
+---
+
+## The user study needed infrastructure before it needed participants
+
+The professor's note that evaluation is critical for an A meant something specific: a flat-vs-lit comparison, run properly, isolating the rendering technique as the actual variable. That comparison can't exist without a second build that's identical except for lighting, so before writing a protocol, I built the thing the protocol tests.
+
+Added a `?mode=flat` URL param that strips the N·L diffuse term and skips the shadow pass entirely, while keeping the room, characters, audio, and post-processing untouched:
+
+```glsl
+uniform float uFlat;
+...
+color = uFlat > 0.5 ? albedo * 0.6 : albedo * lightAmount;
+```
+
+Not a visible in-game toggle: deliberately, so a participant can't discover or fiddle with which condition they're in.
+
+With that in place, wrote the actual protocol: within-subjects, n≥5 (recommend 6–8), counterbalanced by participant number decided before they sit down, Self-Assessment Manikin (valence/arousal/dominance) after each condition plus two open questions, a pilot run before real sessions, and a debrief step at the end disclosing that there were two versions, since withholding that during the session is fine, but only if it's disclosed afterward. Full protocol is in `report/user-study-protocol.md`, printable consent + rating sheet in `report/user-study-form.md`.
+
+---
+
+## Literature cited this session
+
+| Concept | Source |
+|---|---|
+| Soft-shadow raymarch, extended to a shared scene SDF for furniture | [3] Quilez, I. "Soft shadows in raymarched SDFs," 2010 |
+| Self-Assessment Manikin (valence/arousal/dominance) for the flat-vs-lit study | [12] Bradley, M.M. and Lang, P.J. "Measuring emotion: The Self-Assessment Manikin and the semantic differential," 1994 |
+
+## AI usage log
+
+| Date       | Tool               | Used for                                                                                                                     |
+| ---------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-17 | Claude Code (Sage) | Furniture SDF shadows, diagnosing and fixing the UV-vs-pixel-space stretching bug, diagnosing and fixing the self-shadow bug |
+
+---
+
+## Next session
+
+Run the study: recruiting and sessions are the actual remaining work now, not code. Also still open: capture the entry-12 media files, backfill `ai-log.md`, write report sections 5 and 7, push to GitHub Pages.</textarea>
+
+      <div class="entry-rendered"></div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script>
+      (function () {
+        marked.setOptions({
+          gfm: true,
+          headerIds: false,
+          mangle: false,
+          highlight: function (code, lang) {
+            // Only highlight when the author explicitly sets a language on the fence.
+            // This avoids "helpful" auto-coloring on plain text blocks (e.g. Sobel kernels).
+            try {
+              if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+              }
+              return hljs.escapeHTML(code);
+            } catch {
+              return hljs.escapeHTML(code);
+            }
+          },
+        });
+
+        function escapeHtmlAttr(s) {
+          return String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+        }
+
+        function normalizeFileName(raw) {
+          raw = String(raw).split("|")[0];
+          return String(raw)
+            .replaceAll("\u202f", " ")
+            .replaceAll("\u00a0", " ")
+            .trim();
+        }
+
+        function toMediaHtml(fileNameRaw) {
+          const fileName = normalizeFileName(fileNameRaw);
+          const lower = fileName.toLowerCase();
+          const src = "../media/" + encodeURIComponent(fileName);
+
+          if (
+            lower.endsWith(".mov") ||
+            lower.endsWith(".mp4") ||
+            lower.endsWith(".webm")
+          ) {
+            return (
+              '<video controls playsinline preload="metadata" src="' +
+              escapeHtmlAttr(src) +
+              '"></video>'
+            );
+          }
+
+          return (
+            '<img loading="lazy" alt="' +
+            escapeHtmlAttr(fileName) +
+            '" src="' +
+            escapeHtmlAttr(src) +
+            '"/>'
+          );
+        }
+
+        function preprocessObsidianEmbeds(mdText) {
+          return mdText.replace(/!\[\[([^\]]+?)\]\]/g, function (_m, inner) {
+            return toMediaHtml(inner);
+          });
+        }
+
+        const md = document.querySelector("textarea.entry-md");
+        const rendered = document.querySelector(".entry-rendered");
+        const raw = md?.value ?? "";
+        const preprocessed = preprocessObsidianEmbeds(raw);
+        rendered.innerHTML = marked.parse(preprocessed);
+        // No post-pass highlight: handled by marked() when language is specified.
+      })();
+    </script>
+  </body>
+</html>

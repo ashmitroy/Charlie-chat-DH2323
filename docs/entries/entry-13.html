@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Entry 13 Materials fixed. Bodies for both characters. The chase gets an ending.</title>
+    <meta name="description" content="DH2323 weekly log entry 13." />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial;
+        line-height: 1.55;
+      }
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+      .nav a {
+        text-decoration: none;
+      }
+      .entry-rendered pre {
+        overflow: auto;
+        padding: 12px 14px;
+        border-radius: 10px;
+      }
+      .entry-rendered code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+      }
+      .entry-rendered img,
+      .entry-rendered video {
+        max-width: 100%;
+        border-radius: 10px;
+        display: block;
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="nav">
+        <a href="../index.html">← Back to log index</a>
+      </nav>
+
+      <textarea class="entry-md" hidden>---
+date: 2026-08-10
+session: 13
+title: "Materials fixed. Bodies for both characters. The chase gets an ending."
+tags:
+  - code
+  - glsl
+  - materials
+  - sprites
+  - audio
+  - dialogue
+  - game-design
+media:
+  - screenshot: "Screenshot 2026-08-10 at 2.12.44 PM.png"
+---
+
+# Entry 13: Materials fixed. Bodies for both characters. The chase gets an ending.
+
+## What happened
+
+Went looking for the script before touching any code, 93 pages,  original script from back in April. Melon Zucc implanting an AI in his son live on stage, Dr. Weiss, Dora, Agent Bone, Charlie Chat speaking entirely in glitter emojis. I'd built the last few sessions off the premise without going back to the source, which is how the dialogue ended up too vague to mean anything. Fixed that first.
+
+Then four real things: a shader bug that had nothing to do with lighting, furniture and sprites for a room that had neither, a chase that couldn't be lost or won, and audio that didn't exist despite the start screen claiming it did.
+
+---
+
+## The wall/floor bug wasn't a tuning problem
+
+Added a wall border and a doorway to the height map last session. On screen: no visible difference between wall and floor. Assumed I hadn't pushed the brightness values far enough apart and kept adjusting numbers. Wrong diagnosis.
+
+`sobel.frag` only ever reads the height map for its **gradient**: the Sobel kernel that derives the surface normal. The actual output color was `brightness * lightColor`, a fixed light-blue tint multiplied by however much light was hitting that normal. A flat wall and a flat floor both have zero gradient. Same normal, same lighting, same color, regardless of what height value I assigned them. The height value was never being read as a material: only as a slope.
+
+Fixed by sampling the height texture a second time in the same shader, this time for its raw value instead of its gradient, and mapping bands of that value to actual colors:
+
+```glsl
+vec3 materialColor(float h) {
+  if (h < 0.2157) return vec3(0.35, 0.20, 0.12); // furniture
+  if (h < 0.2941) return vec3(0.55, 0.30, 0.18); // plant pot
+  if (h < 0.3725) return vec3(0.16, 0.38, 0.20); // plant leaves
+  if (h < 0.4510) return vec3(0.62, 0.52, 0.45); // wall
+  ...
+}
+```
+
+One texture, two reads: gradient drives the normal, raw value drives the albedo. Once that was in, wall and floor actually separated.
+
+---
+
+## Furnishing the room
+
+With materials working, `buildHeightMap()` got a rug, an armchair and side table, two plants, and photo frames flanking the doorway, all still just brightness values written into a pixel loop, no image assets:
+
+```javascript
+if (x >= rug.x0 && x <= rug.x1 && y >= rug.y0 && y <= rug.y1) {
+  const nearEdge = x < rug.x0 + rug.border || x > rug.x1 - rug.border ||
+                    y < rug.y0 + rug.border || y > rug.y1 - rug.border;
+  brightness = nearEdge ? MAT.rugBorder : MAT.rugBody;
+}
+```
+
+Because these are still height-map features, the Sobel filter finds real edges on them: the armchair has an actual lit/shaded boundary against the floor, not a flat sticker.
+
+---
+
+## Bodies, no sprite sheets
+
+Both player and Charlie draw with plain p5 primitives inside the same framebuffer pass: `translate(px - width/2, py - height/2)` to convert their UV position into WEBGL's centered coordinate system, then rectangles and ellipses. Player gets a walk-cycle leg swing driven by `sin(frameCount * 0.35)`. Charlie is a flat black silhouette that leans toward the player and bobs slowly (the Limbo reference), sitting on top of the raymarched shadow that was already there.
+
+Added glowing eyes after the first version looked inert:
+
+```glsl
+const glow = 0.6 + sin(frameCount * 0.08) * 0.15;
+for (const side of [-1, 1]) {
+  const ex = headX + side * 3.2;
+  fill(180, 235, 255, 140 * glow);
+  ellipse(ex, ey, 4, 4);
+}
+```
+
+Small addition. Makes the difference between "shape in the dark" and something looking back at you.
+
+---
+
+## The chase was unwinnable
+
+`PLAYER_SPEED = 0.003`, `CHARLIE_SPEED = 0.0008`, roughly 4x slower. Hold a direction away from him and the distance never closes. No ending existed except walking into him on purpose.
+
+Replaced the fixed speed with a 25-second ramp:
+
+```javascript
+const elapsedSeconds = (frameCount - chaseStartFrame) / 60;
+const rampT = constrain(elapsedSeconds / CHARLIE_RAMP_SECONDS, 0, 1);
+const charlieSpeed = lerp(CHARLIE_SPEED_BASE, CHARLIE_SPEED_MAX, rampT);
+```
+
+Slow and avoidable at first, faster than the player by the end. Evasion buys time, not an infinite stall.
+
+Also added a capped fake-out: if Charlie gets close but hasn't actually caught you, there's a chance he vanishes (both the silhouette and the shadow shader's `uCharlie` uniform get pushed off-canvas) and reappears elsewhere a moment later. Capped at two per run so it doesn't turn into a gimmick.
+
+---
+
+## Audio, finally
+
+The start screen has said `AUDIO ENVIRONMENT........ OK` since it was written, before there was any audio. Built it this session with raw Web Audio API: oscillator, gain, and stereo panner nodes, no sample files, same instinct as the shaders: synthesize instead of import.
+
+```javascript
+droneOscA = audioCtx.createOscillator();
+droneOscA.frequency.value = 58;
+droneOscB = audioCtx.createOscillator();
+droneOscB.frequency.value = 61.5; // detuned against A for a slow beat
+```
+
+The drone pans toward Charlie's position and gets slightly louder and more dissonant as he closes in. Short pitch-swept stings for the confrontation and the vanish. A quiet blip on every dialogue character reveal.
+
+Looked up one citation for this: Grimshaw's *The Audio Uncanny Valley* (2009), on sound that implies a threat without confirming it. Added as a short supplementary note in the report, not a new section: the rendering pipeline is still the actual technical contribution here.
+
+---
+
+## Dialogue: first draft was wrong on two counts
+
+Original intro leaned into moody horror-narrator prose and assumed the player already knew who Charlie, Melon Zucc, and Nonna were. Neither was right for a five-minute browser game someone's opening cold. Rewrote it to actually explain the premise from the script (Nonna's house, the implant done live on stage, nobody sure how much of Charlie is left) and gave em dashes exclusively to Charlie Chat's own lines, so his voice reads apart from the narration the moment you see one.
+
+---
+
+## Literature cited this session
+
+| Concept | Source |
+|---|---|
+| Sound that implies rather than confirms a threat, audio design for horror | [11] Grimshaw, M. "The audio uncanny valley: Sound, fear and the horror game," 2009 |
+
+## AI usage log
+
+| Date       | Tool               | Used for                              |
+| ---------- | ------------------ | ------------------------------------- |
+| 2026-08-10 | Claude Code (Sage) | Web Audio synthesis, dialogue rewrite |
+
+---
+
+## Next session
+
+Object shadows: furniture should occlude light the same way Charlie does, since they're all static and the raymarcher already exists. After that, the user study needs an actual flat-vs-lit comparison build to run against.</textarea>
+
+      <div class="entry-rendered"></div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script>
+      (function () {
+        marked.setOptions({
+          gfm: true,
+          headerIds: false,
+          mangle: false,
+          highlight: function (code, lang) {
+            // Only highlight when the author explicitly sets a language on the fence.
+            // This avoids "helpful" auto-coloring on plain text blocks (e.g. Sobel kernels).
+            try {
+              if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+              }
+              return hljs.escapeHTML(code);
+            } catch {
+              return hljs.escapeHTML(code);
+            }
+          },
+        });
+
+        function escapeHtmlAttr(s) {
+          return String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+        }
+
+        function normalizeFileName(raw) {
+          raw = String(raw).split("|")[0];
+          return String(raw)
+            .replaceAll("\u202f", " ")
+            .replaceAll("\u00a0", " ")
+            .trim();
+        }
+
+        function toMediaHtml(fileNameRaw) {
+          const fileName = normalizeFileName(fileNameRaw);
+          const lower = fileName.toLowerCase();
+          const src = "../media/" + encodeURIComponent(fileName);
+
+          if (
+            lower.endsWith(".mov") ||
+            lower.endsWith(".mp4") ||
+            lower.endsWith(".webm")
+          ) {
+            return (
+              '<video controls playsinline preload="metadata" src="' +
+              escapeHtmlAttr(src) +
+              '"></video>'
+            );
+          }
+
+          return (
+            '<img loading="lazy" alt="' +
+            escapeHtmlAttr(fileName) +
+            '" src="' +
+            escapeHtmlAttr(src) +
+            '"/>'
+          );
+        }
+
+        function preprocessObsidianEmbeds(mdText) {
+          return mdText.replace(/!\[\[([^\]]+?)\]\]/g, function (_m, inner) {
+            return toMediaHtml(inner);
+          });
+        }
+
+        const md = document.querySelector("textarea.entry-md");
+        const rendered = document.querySelector(".entry-rendered");
+        const raw = md?.value ?? "";
+        const preprocessed = preprocessObsidianEmbeds(raw);
+        rendered.innerHTML = marked.parse(preprocessed);
+        // No post-pass highlight: handled by marked() when language is specified.
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Entry 15 The reality check</title>
+    <meta name="description" content="DH2323 weekly log entry 15." />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial;
+        line-height: 1.55;
+      }
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+      .nav a {
+        text-decoration: none;
+      }
+      .entry-rendered pre {
+        overflow: auto;
+        padding: 12px 14px;
+        border-radius: 10px;
+      }
+      .entry-rendered code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+      }
+      .entry-rendered img,
+      .entry-rendered video {
+        max-width: 100%;
+        border-radius: 10px;
+        display: block;
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="nav">
+        <a href="../index.html">← Back to log index</a>
+      </nav>
+
+      <textarea class="entry-md" hidden>---
+date: 2026-08-27
+session: 15
+title: "The reality check: reading all 14 entries against the actual code"
+tags:
+  - reflection
+  - audit
+  - report
+  - citations
+  - sdf
+  - shadow
+---
+
+# Entry 15: The reality check
+
+## What happened
+
+Deadline's basically now, so before writing anything else I wanted one honest answer to a question I'd been avoiding: does this project actually do what fourteen entries of diary say it does? Not "does it look right." Does the *code* match the formulas and papers I said, in writing, back in April and May, that I was going to build.
+
+Went through every entry from 01 to 14 and diffed each claim against the real shader and JS files. Most of it held up. Some of it didn't, and one of the misses was already sitting in plain sight, in an entry I wrote myself.
+
+---
+
+## What held up, exactly as described
+
+N·L diffuse, Sobel-derived normals, the Quilez soft-shadow estimator, sphere tracing stepping by the SDF value instead of a fixed increment, the full bloom/Reinhard/vignette/grain post chain, Charlie's procedural SDF circle, the environment-gets-normal-maps/characters-stay-flat split, the 25-second speed ramp, the shadow-radius-grows-with-proximity mechanic, the fake-out vanish, the `?mode=flat` study toggle: all of it is in the code, formula for formula, matching the entry that first described it. Worth saying plainly before getting to what didn't, because it would've been easy for six months of "just build the next thing" to drift further than it did.
+
+---
+
+## The one my own diary already predicted
+
+Entry 02 (written the second day of this project, before a single shader existed) has this line about normal mapping:
+
+> "The thing I do understand: for a 2D sprite that always faces the camera, tangent space is roughly screen space. Schüler's full method might not be needed."
+
+That was a correct hunch. What actually got built is a plain Sobel gradient on a greyscale height map: no mesh, no tangent basis, nothing Schüler's paper is actually about. But the citation stuck around in `report/references.md` anyway, attached to the wrong technique, for four months, because nobody went back and checked whether the thing I was unsure about in April was still true in August. It wasn't. Pulled the citation today: the technique is real and it's implemented, it just isn't Schüler's.
+
+Two more citations came out alongside it: **GPU Gems**, cited for percentage-closer filtering / shadow mapping, which this project never implements anywhere (the only shadow technique, start to finish, is Quilez's raymarch). Worth noting entry 01's very first resource list already had GPU Gems down for "soft shadow theory" back in April, and the soft shadow that actually shipped four months later came entirely from Quilez instead, so the citation just ended up attached to a different, unbuilt technique than the one originally planned. And **Holopainen's *Foundations of Gameplay***, which my own notes flagged in April as unverified and never actually got cited in the report body: just dead weight sitting in the bibliography.
+
+References now run [1]–[9] in both `report.md` and the LaTeX draft, every one of them checked against real code.
+
+---
+
+## The bug that was in the report, not just the blog
+
+This is the one that mattered most. Entry 02 designed shadows as one merged distance field:
+
+```glsl
+float d = min(sdfCircle(p, charliePos, r), sdfCircle(p, npcPos, r));
+```
+
+Every occluder in one `sceneSDF()`, one raymarch. `report.md` still described exactly that architecture, code block included, right up until today. But `shadow.frag` doesn't do that anymore, and hasn't for a while: Charlie and the furniture get raymarched *separately*, because furniture needed two things Charlie doesn't: a self-shadow exclusion near its own surface, and a lighter darkness floor so it doesn't read as fully black. The two resulting shadow *factors* get combined with `min()` after both raymarches finish, not the underlying distances before either starts.
+
+The strange part: entry 14, the same entry where this split actually got built, still describes it the old way in its opening paragraph: "that's supposed to be close to free once you have one raymarcher, since `sceneSDF()` is just a `min()` over every shape in the scene." Written the same day the two-raymarch version went in. Not a lie, just autopilot: reaching for the explanation that used to be true instead of checking whether it still was. Fixed both the Markdown and LaTeX reports today to describe what `shadow.frag` actually does, with the real code block.
+
+---
+
+## One clean cut, never mentioned again
+
+Entry 03 locked a "canonical pipeline: everything gets built to this spec" that included chromatic aberration in the post pass. It was never built, and no later entry ever says it got cut. Leaving it cut: re-touching working post-processing shader code the day before submission for the sake of matching an old diary entry isn't the right trade. But it's worth naming here rather than letting the report imply it exists.
+
+---
+
+## One gap the process actually caught correctly
+
+`uShadowK` was supposed to animate: lower as Charlie gets close, so shadows spread and soften as the horror mechanic. It's a fixed `8.0`. The same visual beat happens anyway, through the shadow *radius* animating instead of `k`. Different mechanism, same effect, and `report.md` §7.5 already disclosed this as a known limitation before today's audit even started. Flagging it here mainly because it's the one case where "promised dynamic, shipped hardcoded" was already caught and written down honestly, rather than found today for the first time.
+
+---
+
+## What's in the code that the diary never walked through
+
+The full `intro → confront → choice → ending` dialogue state machine, wall-collision bounds, the fake-out respawn's rejection-sampling logic, the audio pan scaling constant. None of these are wrong: they're just bigger than entry 13's "rewrote the dialogue" makes them sound. Documented properly in `report.md` §5.3, just not in the diary the way the rendering steps were.
+
+---
+
+## Literature corrected this session
+
+| Reference | Action | Why |
+|---|---|---|
+| Holopainen, *Foundations of Gameplay* (2011) | Removed | Never verified, never actually cited in-text |
+| Fernando (Ed.), *GPU Gems* (2004) | Removed | Cited for PCF/shadow mapping, never implemented |
+| Schüler, "Normal Mapping Without Precomputed Tangents" (2013) | Removed | Cited for tangent-space TBN, code does plain heightmap Sobel instead, predicted as unnecessary as early as entry 02 |
+
+## AI usage log
+
+| Date       | Tool               | Used for                                           |
+| ---------- | ------------------ | -------------------------------------------------- |
+| 2026-08-27 | Claude Code (Sage) | Read all 14 blog entries against the full codebase |
+
+---
+
+## Next session
+
+The user study is still the one thing that's code-complete but not done: everything else in this entry is documentation catching up to reality, that isn't. Also still open: compile the LaTeX report on a real Overleaf run, capture the three entry-12 media files, and push: `docs/entries/` on GitHub Pages is still only entries 01–05; sessions 06–14 have never actually gone live.</textarea>
+
+      <div class="entry-rendered"></div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script>
+      (function () {
+        marked.setOptions({
+          gfm: true,
+          headerIds: false,
+          mangle: false,
+          highlight: function (code, lang) {
+            // Only highlight when the author explicitly sets a language on the fence.
+            // This avoids "helpful" auto-coloring on plain text blocks (e.g. Sobel kernels).
+            try {
+              if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+              }
+              return hljs.escapeHTML(code);
+            } catch {
+              return hljs.escapeHTML(code);
+            }
+          },
+        });
+
+        function escapeHtmlAttr(s) {
+          return String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+        }
+
+        function normalizeFileName(raw) {
+          raw = String(raw).split("|")[0];
+          return String(raw)
+            .replaceAll("\u202f", " ")
+            .replaceAll("\u00a0", " ")
+            .trim();
+        }
+
+        function toMediaHtml(fileNameRaw) {
+          const fileName = normalizeFileName(fileNameRaw);
+          const lower = fileName.toLowerCase();
+          const src = "../media/" + encodeURIComponent(fileName);
+
+          if (
+            lower.endsWith(".mov") ||
+            lower.endsWith(".mp4") ||
+            lower.endsWith(".webm")
+          ) {
+            return (
+              '<video controls playsinline preload="metadata" src="' +
+              escapeHtmlAttr(src) +
+              '"></video>'
+            );
+          }
+
+          return (
+            '<img loading="lazy" alt="' +
+            escapeHtmlAttr(fileName) +
+            '" src="' +
+            escapeHtmlAttr(src) +
+            '"/>'
+          );
+        }
+
+        function preprocessObsidianEmbeds(mdText) {
+          return mdText.replace(/!\[\[([^\]]+?)\]\]/g, function (_m, inner) {
+            return toMediaHtml(inner);
+          });
+        }
+
+        const md = document.querySelector("textarea.entry-md");
+        const rendered = document.querySelector(".entry-rendered");
+        const raw = md?.value ?? "";
+        const preprocessed = preprocessObsidianEmbeds(raw);
+        rendered.innerHTML = marked.parse(preprocessed);
+        // No post-pass highlight: handled by marked() when language is specified.
+      })();
+    </script>
+  </body>
+</html>

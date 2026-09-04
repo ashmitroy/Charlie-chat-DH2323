@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Entry 05 Sobel confirmed. Normal map visible.</title>
+    <meta name="description" content="DH2323 weekly log entry 05." />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial;
+        line-height: 1.55;
+      }
+      .page {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+      .nav a {
+        text-decoration: none;
+      }
+      .entry-rendered pre {
+        overflow: auto;
+        padding: 12px 14px;
+        border-radius: 10px;
+      }
+      .entry-rendered code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+      }
+      .entry-rendered img,
+      .entry-rendered video {
+        max-width: 100%;
+        border-radius: 10px;
+        display: block;
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="nav">
+        <a href="../index.html">← Back to log index</a>
+      </nav>
+
+      <textarea class="entry-md" hidden>---
+date: 2026-04-27
+session: 05
+title: "Sobel confirmed. Normal map visible. Shader files fixed. Step 3 complete."
+tags: [code, glsl, sobel, normal-map, debug, breakthrough, pipeline]
+media:
+  - screenshot: "Screenshot 2026-04-27 at 12.35.51 PM.png: Sobel normal map visible, purple-blue flat + color ring at circle edge"
+---
+
+# Entry 05  Sobel confirmed. Normal map visible.
+
+## What happened
+
+Step 3 is complete. The Sobel filter is running on a procedural greyscale height map and outputting a full normal map. The result is visible on screen. This is the core academic contribution of the project  no hand-painted normals, no software tool. Normals derived live, in the shader, from a height field.
+
+Also diagnosed and fixed the reason `loadShader()` was failing.
+
+---
+
+## What the screen shows![[Screenshot 2026-04-27 at 12.35.51 PM.png]]
+
+**Purple-blue fill**: this is correct. Flat areas of the height map (the black background, the very peak of the hill) have zero gradient in both X and Y directions. Gx = 0, Gy = 0. The computed normal is (0, 0, 1), pointing straight at the camera. Encoded with `normal * 0.5 + 0.5`, that maps to RGB (0.5, 0.5, 1.0), which is purple-blue.
+
+This is the standard "flat normal" colour. Every default normal map in the world is this colour. It means: this pixel faces directly toward the viewer. No tilt.
+
+**Colour ring at the circle's edge**: faint red/green tinting where the height map slope changes rapidly. At those pixels, Gx and Gy are nonzero. The normal tilts away from (0,0,1) toward (Gx, Gy, 1). Red = rightward tilt, Green = upward tilt.
+
+**Flat line at center**: the very top of the "hill" is also flat (gradient ≈ 0 at the peak). Same purple-blue as the background. This is mathematically correct: a hilltop has no slope.
+
+---
+
+## Why `loadShader()` was failing: root cause found
+
+The `sobel.frag` shader file in `src/shaders/` was corrupted. During a previous debugging session, explanatory prose text was written directly into the GLSL file (XD):
+
+GLSL is compiled by the GPU driver. Prose text is not valid GLSL. The driver rejected the entire file the moment it tried to compile it, hence the `useProgram` error. The browser couldn't surface a useful error message because the failure was deep inside the GPU compiler.
+
+There was also no `sobel.vert` file in `src/shaders/`. `loadShader()` needs both files.
+
+**The fix:**
+- Rewrote `src/shaders/sobel.frag`: pure GLSL, no comments, no prose
+- Created `src/shaders/sobel.vert`: clean vertex passthrough
+- Rewrote `src/js/main.js` to use `loadShader()` in `preload()` instead of inline template literal strings
+
+**Why `preload()` matters:** p5.js fetches shader files over HTTP asynchronously. If `loadShader()` is called in `setup()`, the shader may not be ready when `createShader()` tries to compile it. Putting it in `preload()` guarantees the files are loaded before `setup()` runs. This is the same pattern used in Entry 04 for the UV gradient.
+
+---
+
+## The shader files (final clean state)
+
+**`src/shaders/sobel.vert`:**
+```glsl
+attribute vec3 aPosition;
+attribute vec2 aTexCoord;
+varying vec2 vTexCoord;
+
+uniform mat4 uModelViewMatrix;
+uniform mat4 uProjectionMatrix;
+
+void main() {
+  vTexCoord = aTexCoord;
+  gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+}
+```
+
+**`src/shaders/sobel.frag`:**
+```glsl
+#ifdef GL_ES
+precision highp float;
+#endif
+
+varying vec2 vTexCoord;
+uniform sampler2D uHeightMap;
+uniform vec2 uResolution;
+
+void main() {
+  vec2 texel = 1.0 / uResolution;
+
+  float tl = texture2D(uHeightMap, vTexCoord + vec2(-texel.x,  texel.y)).r;
+  float t  = texture2D(uHeightMap, vTexCoord + vec2(     0.0,  texel.y)).r;
+  float tr = texture2D(uHeightMap, vTexCoord + vec2( texel.x,  texel.y)).r;
+  float l  = texture2D(uHeightMap, vTexCoord + vec2(-texel.x,      0.0)).r;
+  float r  = texture2D(uHeightMap, vTexCoord + vec2( texel.x,      0.0)).r;
+  float bl = texture2D(uHeightMap, vTexCoord + vec2(-texel.x, -texel.y)).r;
+  float b  = texture2D(uHeightMap, vTexCoord + vec2(     0.0, -texel.y)).r;
+  float br = texture2D(uHeightMap, vTexCoord + vec2( texel.x, -texel.y)).r;
+
+  float Gx = -tl - 2.0*l - bl + tr + 2.0*r + br;
+  float Gy =  tl + 2.0*t + tr  - bl - 2.0*b - br;
+
+  vec3 normal = normalize(vec3(-Gx, -Gy, 1.0));
+  gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+}
+```
+
+**`src/js/main.js`:**
+```javascript
+let myShader;
+let heightMap;
+
+function preload() {
+  myShader = loadShader('shaders/sobel.vert', 'shaders/sobel.frag');
+}
+
+function setup() {
+  createCanvas(960, 540, WEBGL);
+  noStroke();
+  heightMap = buildHeightMap();
+}
+
+function buildHeightMap() {
+  let img = createImage(960, 540);
+  img.loadPixels();
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      let dx = x - 480;
+      let dy = y - 270;
+      let dist = sqrt(dx * dx + dy * dy);
+      let brightness = floor(constrain(map(dist, 0, 240, 255, 0), 0, 255));
+      let i = (y * img.width + x) * 4;
+      img.pixels[i]     = brightness;
+      img.pixels[i + 1] = brightness;
+      img.pixels[i + 2] = brightness;
+      img.pixels[i + 3] = 255;
+    }
+  }
+  img.updatePixels();
+  return img;
+}
+
+function draw() {
+  shader(myShader);
+  myShader.setUniform('uResolution', [width, height]);
+  myShader.setUniform('uHeightMap', heightMap);
+  plane(width, height);
+}
+```
+
+---
+
+## What I now understand: how the Sobel gives you a normal
+
+A normal map needs to know which direction each pixel's surface is tilting. The height map tells you height, not tilt. The Sobel filter converts height to tilt by measuring the gradient (the rate of change) in the X and Y directions separately.
+
+**The 3×3 neighbourhood:**
+For any pixel at UV coordinate `vTexCoord`, I sample 8 neighbours (one pixel step away in each direction). The pixel step size is `1.0 / uResolution`, normalised to UV space.
+
+```
+tl  t  tr
+ l  [p]  r
+bl  b  br
+```
+
+**Sobel X kernel (Gx):**
+```
+-1  0  +1
+-2  0  +2
+-1  0  +1
+```
+`Gx = -tl - 2*l - bl + tr + 2*r + br`
+
+Positive Gx = right side brighter than left = surface tilts rightward.
+
+**Sobel Y kernel (Gy):**
+```
++1  +2  +1
+ 0   0   0
+-1  -2  -1
+```
+`Gy = tl + 2*t + tr - bl - 2*b - br`
+
+Positive Gy = top brighter than bottom = surface tilts upward.
+
+**Building the normal:**
+The tilt in X and Y combined with a fixed depth component gives the full normal direction:
+```glsl
+vec3 normal = normalize(vec3(-Gx, -Gy, 1.0));
+```
+
+The negation of Gx and Gy flips convention to match screen-space (positive X right, positive Y up). The Z component of 1.0 is the "depth": it pulls the normal toward the camera, so surfaces with zero gradient are (0,0,1), not (0,0,0).
+
+**Encoding for display:**
+Normal components range from -1 to +1. RGB only displays 0 to 1. So:
+```glsl
+gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+```
+Maps -1→0, 0→0.5, +1→1.0. That's why flat = (0.5, 0.5, 1.0) = purple-blue.
+
+---
+
+## Why this matters for the project
+
+This is the visual proof that the pipeline's core mathematical step works. The colour on screen IS the normal data. When we wire up the point light in the next step, the fragment shader will:
+1. Read this same normal from the height map (instead of visualising it as colour)
+2. Compute `dot(normal, lightDir)`: how directly the surface faces the light
+3. Multiply by the albedo colour of the environment texture
+
+The purple-blue normal map becomes invisible. What you'll see instead is the environment responding to light: brighter where the surface faces the light, darker where it tilts away.
+
+**→ Used again in Entry 06 (2026-04-28):** The entire Sobel block (8 neighbour samples + Gx/Gy kernel + `normalize(vec3(-Gx, -Gy, 1.0))`) carried forward unchanged into the N·L diffuse shader. The only change: instead of outputting `normal * 0.5 + 0.5` as colour, the normal feeds `dot(normal, lightDir)`. The Sobel computation itself was not modified at all.
+
+---
+
+## Literature cited this session
+
+| Concept | Source |
+|---|---|
+| Deriving surface normals from a height map gradient using a filter kernel (the core technique of this session) | [5] Schüler, C. "Normal Mapping Without Precomputed Tangents," 2013. thetenthplanet.de |
+| Normal map RGB encoding: `normal * 0.5 + 0.5` maps [-1,1] → [0,1] for storage/display | [1] Akenine-Möller et al., *Real-Time Rendering*, 4th ed., Ch. 9 |
+| Sobel operator: 3×3 weighted kernel measuring image gradient in X and Y | [5] Schüler, C.: gradient-based normal derivation section |
+
+## AI usage log
+
+| Date       | Tool       | Used for                                                                               |
+| ---------- | ---------- | -------------------------------------------------------------------------------------- |
+| 2026-04-27 | Claude Code (Sage) | Diagnosing loadShader() failure, fixing shader files, Sobel math explanation |
+
+---
+
+## Next session
+
+Step 4: N·L diffuse lighting. Add a mouse-driven point light. Replace the normal-as-colour output with `dot(normal, lightDir)` multiplied by the environment texture. The environment becomes physically lit for the first time.
+</textarea>
+
+      <div class="entry-rendered"></div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script>
+      (function () {
+        marked.setOptions({
+          gfm: true,
+          headerIds: false,
+          mangle: false,
+          highlight: function (code, lang) {
+            // Only highlight when the author explicitly sets a language on the fence.
+            // This avoids "helpful" auto-coloring on plain text blocks (e.g. Sobel kernels).
+            try {
+              if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+              }
+              return hljs.escapeHTML(code);
+            } catch {
+              return hljs.escapeHTML(code);
+            }
+          },
+        });
+
+        function escapeHtmlAttr(s) {
+          return String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+        }
+
+        function normalizeFileName(raw) {
+          raw = String(raw).split("|")[0];
+          return String(raw)
+            .replaceAll("\u202f", " ")
+            .replaceAll("\u00a0", " ")
+            .trim();
+        }
+
+        function toMediaHtml(fileNameRaw) {
+          const fileName = normalizeFileName(fileNameRaw);
+          const lower = fileName.toLowerCase();
+          const src = "../media/" + encodeURIComponent(fileName);
+
+          if (
+            lower.endsWith(".mov") ||
+            lower.endsWith(".mp4") ||
+            lower.endsWith(".webm")
+          ) {
+            return (
+              '<video controls playsinline preload="metadata" src="' +
+              escapeHtmlAttr(src) +
+              '"></video>'
+            );
+          }
+
+          return (
+            '<img loading="lazy" alt="' +
+            escapeHtmlAttr(fileName) +
+            '" src="' +
+            escapeHtmlAttr(src) +
+            '"/>'
+          );
+        }
+
+        function preprocessObsidianEmbeds(mdText) {
+          return mdText.replace(/!\[\[([^\]]+?)\]\]/g, function (_m, inner) {
+            return toMediaHtml(inner);
+          });
+        }
+
+        const md = document.querySelector("textarea.entry-md");
+        const rendered = document.querySelector(".entry-rendered");
+        const raw = md?.value ?? "";
+        const preprocessed = preprocessObsidianEmbeds(raw);
+        rendered.innerHTML = marked.parse(preprocessed);
+        // No post-pass highlight: handled by marked() when language is specified.
+      })();
+    </script>
+  </body>
+</html>
